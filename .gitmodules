@@ -1,0 +1,6 @@
+[submodule "fnirsi-usb-power-data-logger"]
+	path = fnirsi-usb-power-data-logger
+	url = https://github.com/baryluk/fnirsi-usb-power-data-logger.git
+[submodule "software/bcm4389"]
+	path = software/bcm4389
+	url = https://android.googlesource.com/kernel/google-modules/wlan/bcmdhd/bcm4389

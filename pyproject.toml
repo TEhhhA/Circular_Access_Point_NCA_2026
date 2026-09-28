@@ -1,0 +1,14 @@
+[project]
+name = "NCA_2026_CAP"
+version = "0.1.0"
+requires-python = "==3.10.*"
+dependencies = [
+    "matplotlib",
+    "pandas",
+    "pdf2image>=1.17.0",
+    "playwright>=1.63.0",
+    "scienceplots",
+    "scikit-learn>=1.7.2",
+    "seaborn",
+    "statsmodels>=0.15.0",
+]

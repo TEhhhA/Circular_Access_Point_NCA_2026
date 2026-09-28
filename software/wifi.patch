@@ -1,0 +1,433 @@
+diff --git a/Kbuild b/Kbuild
+index 59d72d3..7ebf850 100644
+--- a/Kbuild
++++ b/Kbuild
+@@ -26,12 +26,13 @@ ifeq ($(KERNEL_SRC),)
+  ifeq ($(srctree),.)
+   BCMDHD_ROOT=$(src)
+  else
+-  BCMDHD_ROOT=$(srctree)/$(src)
++  BCMDHD_ROOT=$(src)
+  endif
+  $(warning : ** Regular in-tree build BCMDHD_ROOT=$(BCMDHD_ROOT)**)
+ else
+  $(warning : ** out-of-tree Kbuild BCMDHD_ROOT=$(BCMDHD_ROOT)**)
+ endif
++CONFIG_SOC_GOOGLE=y
+ 
+ # For pixel build, unset SOC related configs which are defined in DHD
+ ifneq ($(CONFIG_SOC_GOOGLE),)
+@@ -54,6 +55,7 @@ CONFIG_BCMDHD_PCIE=y
+ CONFIG_BCM43752=
+ CONFIG_BCM4389=y
+ CONFIG_DHD_OF_SUPPORT=y
++
+ ifneq ($(CONFIG_SOC_GOOGLE),)
+  CONFIG_BCMDHD_FW_PATH="\"/vendor/firmware/fw_bcmdhd.bin\""
+  CONFIG_BCMDHD_NVRAM_PATH="\"/vendor/etc/wifi/bcmdhd.cal\""
+@@ -99,7 +101,7 @@ DHDCFLAGS += -DCONFIG_BCMDHD_GET_OOB_STATE=$(CONFIG_BCMDHD_GET_OOB_STATE)
+ endif
+ 
+ DHDCFLAGS += -DBCMUTILS_ERR_CODES -DUSE_NEW_RSPEC_DEFS
+-DHDCFLAGS += -Wall -Werror -Wstrict-prototypes -Wno-parentheses-equality -Dlinux -DLINUX -DBCMDRIVER \
++DHDCFLAGS += -Wall -Wno-error -Wstrict-prototypes -Wno-parentheses-equality -Dlinux -DLINUX -DBCMDRIVER \
+ 	-DBCMDONGLEHOST -DBCMDMA32 -DBCMFILEIMAGE \
+ 	-DDHDTHREAD -DSHOW_EVENTS -DWLP2P \
+ 	-DWIFI_ACT_FRAME -DARP_OFFLOAD_SUPPORT \
+@@ -112,7 +114,12 @@ DHDCFLAGS += -Wall -Werror -Wstrict-prototypes -Wno-parentheses-equality -Dlinux
+ 	-DWL_P2P_USE_RANDMAC
+ 
+ DHDCFLAGS += -DOEM_ANDROID
+-DHDCFLAGS += -DDHD_COREDUMP
++#DHDCFLAGS += -DDHD_COREDUMP
++
++DHDCFLAGS += -DTEST_TX_POWER_CONTROL -DCUSTOMER_HW4_PRIVATE_CMD -DWES_SUPPORT
++DHDCFLAGS += -DSUPPORT_SOFTAP_ELNA_BYPASS -DCUSTOM_SOFTAP_SET_ANT -DWL_TWT
++DHDCFLAGS += -DLIMIT_AP_BW -DSUPPORT_RSSI_SUM_REPORT -DSUPPORT_AP_BWCTRL -DWL_CONFIG_5G160
++
+ 
+ #################
+ # Common feature
+@@ -255,9 +262,9 @@ ifneq ($(CONFIG_SOC_GOOGLE),)
+ 	DHDCFLAGS += -DRESCHED_STREAK_MAX_HIGH=10
+ 	DHDCFLAGS += -DRESCHED_STREAK_MAX_LOW=2
+ 	DHDCFLAGS += -DCLEAN_IRQ_AFFINITY_HINT
+-	DHDCFLAGS += -DIRQ_AFFINITY_BIG_CORE=4
+-	DHDCFLAGS += -DIRQ_AFFINITY_SMALL_CORE=4
+-	DHDCFLAGS += -DWAKEUP_KSOFTIRQD_POST_NAPI_SCHEDULE
++	DHDCFLAGS += -DIRQ_AFFINITY_BIG_CORE=6
++	DHDCFLAGS += -DIRQ_AFFINITY_SMALL_CORE=6
++#	DHDCFLAGS += -DWAKEUP_KSOFTIRQD_POST_NAPI_SCHEDULE
+ 	# Tx/Rx tasklet bounds
+ 	DHDCFLAGS += -DDHD_TX_CPL_BOUND=64
+ 	DHDCFLAGS += -DDHD_TX_POST_BOUND=128
+diff --git a/dhd_custom_google.c b/dhd_custom_google.c
+index 46f6eef..4ab94c6 100644
+--- a/dhd_custom_google.c
++++ b/dhd_custom_google.c
+@@ -43,9 +43,7 @@
+ #include <dhd_dbg.h>
+ #include <dhd.h>
+ 
+-#if defined(CONFIG_SOC_GOOGLE)
+ #include <linux/exynos-pci-ctrl.h>
+-#endif /* CONFIG_SOC_GOOGLE */
+ 
+ #ifdef DHD_COREDUMP
+ #include <linux/platform_data/sscoredump.h>
+@@ -54,12 +52,8 @@
+ #include <bcmstdlib_s.h>
+ 
+ #define EXYNOS_PCIE_VENDOR_ID 0x144d
+-#if defined(CONFIG_SOC_GOOGLE)
+ #define EXYNOS_PCIE_DEVICE_ID 0xecec
+ #define EXYNOS_PCIE_CH_NUM 0
+-#else
+-#error "Not supported platform"
+-#endif /* CONFIG_SOC_GOOGLE */
+ 
+ #ifdef CONFIG_BROADCOM_WIFI_RESERVED_MEM
+ extern int dhd_init_wlan_mem(void);
+@@ -87,12 +81,10 @@ static uint64 last_affinity_update_time_ns = 0;
+ static bool is_irq_on_big_core = TRUE;
+ 
+ static int pcie_ch_num = EXYNOS_PCIE_CH_NUM;
+-#if defined(CONFIG_SOC_GOOGLE)
+ #define EXYNOS_PCIE_RC_ONOFF
+ extern int exynos_pcie_pm_resume(int);
+ extern void exynos_pcie_pm_suspend(int);
+ extern int exynos_pcie_l1_exit(int ch_num);
+-#endif /* CONFIG_SOC_GOOGLE */
+ 
+ #ifdef EXYNOS_PCIE_DEBUG
+ extern void exynos_pcie_register_dump(int ch_num);
+diff --git a/dhd_pcie.h b/dhd_pcie.h
+index f136e6c..01fc092 100644
+--- a/dhd_pcie.h
++++ b/dhd_pcie.h
+@@ -828,8 +828,8 @@ extern void dhd_bus_doorbell_timeout_reset(struct dhd_bus *bus);
+ #endif /* DHD_SET_PCIE_DMA_MASK_FOR_GS101 */
+ 
+ #ifdef CONFIG_PCI_TEGRA
+-extern int tegra_pcie_pm_suspend(void);
+-extern int tegra_pcie_pm_resume(void);
++//extern int tegra_pcie_pm_suspend(void);
++//extern int tegra_pcie_pm_resume(void);
+ #endif /* CONFIG_PCI_TEGRA */
+ 
+ extern int dhd_buzzz_dump_dngl(dhd_bus_t *bus);
+diff --git a/include/linuxver.h b/include/linuxver.h
+index 8ac60d4..9ab8554 100644
+--- a/include/linuxver.h
++++ b/include/linuxver.h
+@@ -391,7 +391,7 @@ extern void timer_cb_compat(struct timer_list *tl);
+ #define timer_set_private(timer_compat, priv) (timer_compat)->arg = priv
+ #define timer_expires(timer_compat) (timer_compat)->timer.expires
+ 
+-#define del_timer(t) timer_delete(&((t)->timer))
++#define del_timer(t) timer_delete_sync(&((t)->timer))
+ #define del_timer_sync(t) timer_delete_sync(&((t)->timer))
+ #define timer_pending(t) timer_pending(&((t)->timer))
+ #define add_timer(t) add_timer(&((t)->timer))
+diff --git a/wl_android.c b/wl_android.c
+index c9918e9..eceb63d 100644
+--- a/wl_android.c
++++ b/wl_android.c
+@@ -164,10 +164,10 @@
+ #ifdef SUPPORT_LTECX
+ #define CMD_LTECX_SET		"LTECOEX"
+ #endif /* SUPPORT_LTECX */
+-#ifdef TEST_TX_POWER_CONTROL
++//#ifdef TEST_TX_POWER_CONTROL
+ #define CMD_TEST_SET_TX_POWER		"TEST_SET_TX_POWER"
+ #define CMD_TEST_GET_TX_POWER		"TEST_GET_TX_POWER"
+-#endif /* TEST_TX_POWER_CONTROL */
++//#endif /* TEST_TX_POWER_CONTROL */
+ #define CMD_SARLIMIT_TX_CONTROL		"SET_TX_POWER_CALLING"
+ #define CMD_SARLIMIT_NR_SUB6_BANDINFO	"SET_TX_POWER_SUB6_BAND"
+ #ifdef SUPPORT_SET_TID
+@@ -471,11 +471,11 @@ typedef union {
+ 
+ #define CMD_MURX_BFE_CAP "MURX_BFE_CAP"
+ 
+-#ifdef SUPPORT_RSSI_SUM_REPORT
++//#ifdef SUPPORT_RSSI_SUM_REPORT
+ #define CMD_SET_RSSI_LOGGING				"SET_RSSI_LOGGING"
+ #define CMD_GET_RSSI_LOGGING				"GET_RSSI_LOGGING"
+ #define CMD_GET_RSSI_PER_ANT				"GET_RSSI_PER_ANT"
+-#endif /* SUPPORT_RSSI_SUM_REPORT */
++//#endif /* SUPPORT_RSSI_SUM_REPORT */
+ 
+ #define CMD_GET_SNR							"GET_SNR"
+ 
+@@ -7858,7 +7858,7 @@ int wl_android_set_singlecore_scan(struct net_device *dev, char *command)
+ 	return error;
+ }
+ 
+-#ifdef TEST_TX_POWER_CONTROL
++//#ifdef TEST_TX_POWER_CONTROL
+ static int
+ wl_android_set_tx_power(struct net_device *dev, const char* string_num)
+ {
+@@ -7907,7 +7907,7 @@ wl_android_get_tx_power(struct net_device *dev, char *command, int total_len)
+ 
+ 	return bytes_written;
+ }
+-#endif /* TEST_TX_POWER_CONTROL */
++//#endif /* TEST_TX_POWER_CONTROL */
+ 
+ #define NRSUB6_SAR_ENABLE "6"
+ 
+@@ -9152,7 +9152,7 @@ wl_android_murx_bfe_cap(struct net_device *dev, int val)
+ }
+ #endif /* WL_MURX */
+ 
+-#ifdef SUPPORT_RSSI_SUM_REPORT
++//#ifdef SUPPORT_RSSI_SUM_REPORT
+ int
+ wl_android_get_rssi_per_ant(struct net_device *dev, char *command, int total_len)
+ {
+@@ -9329,7 +9329,7 @@ wl_android_get_rssi_logging(struct net_device *dev, char *command, int total_len
+ 
+ 	return bytes_written;
+ }
+-#endif /* SUPPORT_RSSI_SUM_REPORT */
++//#endif /* SUPPORT_RSSI_SUM_REPORT */
+ 
+ #ifdef SET_PCIE_IRQ_CPU_CORE
+ void
+@@ -12596,7 +12596,7 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
+ 		bytes_written = wl_android_get_band(net, command, priv_cmd.total_len);
+ 	}
+ #ifdef WL_CFG80211
+-#ifndef CUSTOMER_SET_COUNTRY
++//#ifndef CUSTOMER_SET_COUNTRY
+ 	/* CUSTOMER_SET_COUNTRY feature is define for only GGSM model */
+ 	else if (strnicmp(command, CMD_COUNTRY, strlen(CMD_COUNTRY)) == 0) {
+ 		/*
+@@ -12635,7 +12635,7 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
+ 		bytes_written = wl_cfg80211_set_country_code(net, country_code,
+ 			true, true, revinfo);
+ 	}
+-#endif /* CUSTOMER_SET_COUNTRY */
++//#endif /* CUSTOMER_SET_COUNTRY */
+ #endif /* WL_CFG80211 */
+ 	else if (strnicmp(command, CMD_SET_CSA, strlen(CMD_SET_CSA)) == 0) {
+ 		bytes_written = wl_android_set_csa(net, command);
+@@ -12921,7 +12921,7 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
+ 	else if (strnicmp(command, CMD_SET_SCSCAN, strlen(CMD_SET_SCSCAN)) == 0) {
+ 		bytes_written = wl_android_set_singlecore_scan(net, command);
+ 	}
+-#ifdef TEST_TX_POWER_CONTROL
++//#ifdef TEST_TX_POWER_CONTROL
+ 	else if (strnicmp(command, CMD_TEST_SET_TX_POWER,
+ 		strlen(CMD_TEST_SET_TX_POWER)) == 0) {
+ 		int skip = strlen(CMD_TEST_SET_TX_POWER) + 1;
+@@ -12931,7 +12931,7 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
+ 		strlen(CMD_TEST_GET_TX_POWER)) == 0) {
+ 		wl_android_get_tx_power(net, command, priv_cmd.total_len);
+ 	}
+-#endif /* TEST_TX_POWER_CONTROL */
++//#endif /* TEST_TX_POWER_CONTROL */
+ 	else if (strnicmp(command, CMD_SARLIMIT_TX_CONTROL,
+ 		strlen(CMD_SARLIMIT_TX_CONTROL)) == 0) {
+ 		int skip = strlen(CMD_SARLIMIT_TX_CONTROL) + 1;
+@@ -13120,7 +13120,7 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
+ 		bytes_written = wl_android_get_ap_bw(net, command, priv_cmd.total_len);
+ 	}
+ #endif /* SUPPORT_AP_BWCTRL */
+-#ifdef SUPPORT_RSSI_SUM_REPORT
++//#ifdef SUPPORT_RSSI_SUM_REPORT
+ 	else if (strnicmp(command, CMD_SET_RSSI_LOGGING, strlen(CMD_SET_RSSI_LOGGING)) == 0) {
+ 		bytes_written = wl_android_set_rssi_logging(net, command, priv_cmd.total_len);
+ 	}
+@@ -13130,7 +13130,7 @@ wl_handle_private_cmd(struct net_device *net, char *command, u32 cmd_len)
+ 	else if (strnicmp(command, CMD_GET_RSSI_PER_ANT, strlen(CMD_GET_RSSI_PER_ANT)) == 0) {
+ 		bytes_written = wl_android_get_rssi_per_ant(net, command, priv_cmd.total_len);
+ 	}
+-#endif /* SUPPORT_RSSI_SUM_REPORT */
++//#endif /* SUPPORT_RSSI_SUM_REPORT */
+ #if defined(SUPPORT_RANDOM_MAC_SCAN)
+ 	else if (strnicmp(command, ENABLE_RANDOM_MAC, strlen(ENABLE_RANDOM_MAC)) == 0) {
+ 		bytes_written = wl_cfg80211_set_random_mac(net, TRUE);
+diff --git a/wl_cfg80211.c b/wl_cfg80211.c
+index a6edcf8..d09119e 100644
+--- a/wl_cfg80211.c
++++ b/wl_cfg80211.c
+@@ -508,7 +508,7 @@ static int wl_cfg80211_is_wfa_cap_ie(wlcfg_assoc_info_t *info, struct bcm_cfg802
+ /*
+  * cfg80211_ops api/callback list
+  */
+-static s32 wl_cfg80211_set_wiphy_params(struct wiphy *wiphy, int radio_idx, u32 changed);
++static s32 wl_cfg80211_set_wiphy_params(struct wiphy *wiphy, int euh, u32 changed);
+ #ifdef WLAIBSS_MCHAN
+ static bcm_struct_cfgdev* bcm_cfg80211_add_ibss_if(struct wiphy *wiphy, char *name);
+ static s32 bcm_cfg80211_del_ibss_if(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev);
+@@ -540,7 +540,7 @@ static s32 wl_cfg80211_disconnect(struct wiphy *wiphy, struct net_device *dev,
+ #if defined(WL_CFG80211_P2P_DEV_IF)
+ static s32
+ wl_cfg80211_set_tx_power(struct wiphy *wiphy, struct wireless_dev *wdev,
+-	int radio_idx, enum nl80211_tx_power_setting type, s32 mbm);
++	int euh, enum nl80211_tx_power_setting type, s32 mbm);
+ #else
+ static s32
+ wl_cfg80211_set_tx_power(struct wiphy *wiphy,
+@@ -548,7 +548,7 @@ wl_cfg80211_set_tx_power(struct wiphy *wiphy,
+ #endif /* WL_CFG80211_P2P_DEV_IF */
+ #if defined(WL_CFG80211_P2P_DEV_IF)
+ static s32 wl_cfg80211_get_tx_power(struct wiphy *wiphy,
+-	struct wireless_dev *wdev, int radio_idx, unsigned int link_id,
++	struct wireless_dev *wdev, int euh, unsigned int link_id,
+ 	s32 *dbm);
+ #else
+ static s32 wl_cfg80211_get_tx_power(struct wiphy *wiphy, s32 *dbm);
+@@ -3343,7 +3343,7 @@ static s32 wl_set_retry(struct net_device *dev, u32 retry, bool l)
+ 	return err;
+ }
+ 
+-static s32 wl_cfg80211_set_wiphy_params(struct wiphy *wiphy, int radio_idx, u32 changed)
++static s32 wl_cfg80211_set_wiphy_params(struct wiphy *wiphy, int euh, u32 changed)
+ {
+ 	struct bcm_cfg80211 *cfg = (struct bcm_cfg80211 *)wiphy_priv(wiphy);
+ 	struct net_device *ndev = bcmcfg_to_prmry_ndev(cfg);
+@@ -7322,7 +7322,7 @@ exit:
+ #if defined(WL_CFG80211_P2P_DEV_IF)
+ static s32
+ wl_cfg80211_set_tx_power(struct wiphy *wiphy, struct wireless_dev *wdev,
+-	int radio_idx, enum nl80211_tx_power_setting type, s32 mbm)
++	int euh, enum nl80211_tx_power_setting type, s32 mbm)
+ #else
+ static s32
+ wl_cfg80211_set_tx_power(struct wiphy *wiphy,
+@@ -7371,7 +7371,7 @@ wl_cfg80211_set_tx_power(struct wiphy *wiphy,
+ 
+ #if defined(WL_CFG80211_P2P_DEV_IF)
+ static s32 wl_cfg80211_get_tx_power(struct wiphy *wiphy,
+-	struct wireless_dev *wdev, int radio_idx, unsigned int link_id,
++	struct wireless_dev *wdev, int euh, unsigned int link_id,
+ 	s32 *dbm)
+ #else
+ static s32 wl_cfg80211_get_tx_power(struct wiphy *wiphy, s32 *dbm)
+@@ -11815,8 +11815,7 @@ void wl_config_custom_regulatory(struct wiphy *wiphy)
+ 
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 14, 0))
+ 	wiphy->regulatory_flags |=
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) &&
+-	(LINUX_VERSION_CODE <= KERNEL_VERSION(6, 1, 38))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)) && (LINUX_VERSION_CODE <= KERNEL_VERSION(6, 1, 38))
+ 		REGULATORY_IGNORE_STALE_KICKOFF |
+ #endif /* LINUX_VERSION_CODE >= (3, 19, 0) && LINUX_VERSION_CODE <= (6, 1, 38) */
+ 		REGULATORY_CUSTOM_REG;
+diff --git a/wl_cfg80211.h b/wl_cfg80211.h
+index b3fd238..61e43be 100644
+--- a/wl_cfg80211.h
++++ b/wl_cfg80211.h
+@@ -110,10 +110,10 @@ struct wl_ibss;
+ #define WL_FILS_ROAM_OFFLD
+ #endif
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0))
++//#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0))
+ /* Use driver managed regd */
+ #define WL_SELF_MANAGED_REGDOM
+-#endif /* KERNEL >= 4.0 */
++//#endif /* KERNEL >= 4.0 */
+ 
+ /* mandatory for Android 11 */
+ #define WL_ACT_FRAME_MAC_RAND
+diff --git a/wl_cfgvif.c b/wl_cfgvif.c
+index d166ce3..54a0875 100644
+--- a/wl_cfgvif.c
++++ b/wl_cfgvif.c
+@@ -163,10 +163,10 @@ wl_cfgoce_has_ie(const u8 *ie, const u8 **tlvs, u32 *tlvs_len, const u8 *oui, u3
+ 
+ static bool check_dev_role_integrity(struct bcm_cfg80211 *cfg, u32 dev_role);
+ 
+-#ifdef SUPPORT_AP_BWCTRL
++//#ifdef SUPPORT_AP_BWCTRL
+ static int bw2cap[] = { 0, 0, WLC_BW_CAP_20MHZ, WLC_BW_CAP_40MHZ, WLC_BW_CAP_80MHZ,
+ 	WLC_BW_CAP_160MHZ, WLC_BW_CAP_160MHZ };
+-#endif /* SUPPORT_AP_BWCTRL */
++//#endif /* SUPPORT_AP_BWCTRL */
+ 
+ #if !defined(BCMDONGLEHOST)
+ /* Wake lock are used in Android only, which is dongle based as of now */
+@@ -181,10 +181,10 @@ static int bw2cap[] = { 0, 0, WLC_BW_CAP_20MHZ, WLC_BW_CAP_40MHZ, WLC_BW_CAP_80M
+ 				 (akm) == RSN_AKM_UNSPECIFIED ||	\
+ 				 (akm) == RSN_AKM_PSK)
+ 
+-#ifdef SUPPORT_AP_BWCTRL
++//#ifdef SUPPORT_AP_BWCTRL
+ static void
+ wl_update_apchan_bwcap(struct bcm_cfg80211 *cfg, struct net_device *ndev, chanspec_t chanspec);
+-#endif /* SUPPORT_AP_BWCTRL */
++//#endif /* SUPPORT_AP_BWCTRL */
+ 
+ #if ((LINUX_VERSION_CODE >= KERNEL_VERSION (3, 5, 0)) && (LINUX_VERSION_CODE <= (3, 7, \
+ 	0)))
+@@ -1446,7 +1446,7 @@ fail:
+ 	return err;
+ }
+ 
+-#ifdef SUPPORT_AP_BWCTRL
++//#ifdef SUPPORT_AP_BWCTRL
+ static chanspec_t
+ wl_channel_to_chanspec(struct wiphy *wiphy, struct net_device *dev, u32 channel, u32 bw_cap)
+ {
+@@ -1505,7 +1505,7 @@ exit:
+ 	WL_DBG(("return chanspec %x %d\n", ret_c, bw));
+ 	return ret_c;
+ }
+-#endif /* SUPPORT_AP_BWCTRL */
++//#endif /* SUPPORT_AP_BWCTRL */
+ 
+ void
+ wl_cfg80211_cleanup_virtual_ifaces(struct bcm_cfg80211 *cfg, bool rtnl_lock_reqd)
+@@ -5605,9 +5605,9 @@ wl_ap_channel_ind(struct bcm_cfg80211 *cfg,
+ 	WL_INFORM_MEM(("(%s) AP channel:%d chspec:0x%x \n",
+ 		ndev->name, channel, chanspec));
+ 
+-#ifdef SUPPORT_AP_BWCTRL
++//#ifdef SUPPORT_AP_BWCTRL
+ 	wl_update_apchan_bwcap(cfg, ndev, chanspec);
+-#endif /* SUPPORT_AP_BWCTRL */
++//#endif /* SUPPORT_AP_BWCTRL */
+ 
+ 	if (!(cfg->ap_oper_channel == INVCHANSPEC) && (cfg->ap_oper_channel != chanspec)) {
+ 		/*
+@@ -6679,7 +6679,7 @@ fail:
+ }
+ #endif /* SUPPORT_SOFTAP_ELNA_BYPASS */
+ 
+-#ifdef SUPPORT_AP_BWCTRL
++//#ifdef SUPPORT_AP_BWCTRL
+ #define OPER_MODE_ENABLE	(1 << 8)
+ static int op2bw[] = {20, 40, 80, 160};
+ 
+@@ -6880,7 +6880,7 @@ wl_set_ap_bw(struct net_device *dev, u32 bw, char *ifname)
+ 	}
+ 
+ 	/* BW control in AX mode needs more verification */
+-	ret = wl_get_ap_he_mode(ndev, cfg, &he);
++	/* ret = wl_get_ap_he_mode(ndev, cfg, &he);
+ 	if (ret == BCME_OK && he) {
+ 		WL_ERR(("BW control in HE mode is not supported\n"));
+ 		return BCME_UNSUPPORTED;
+@@ -6897,7 +6897,7 @@ wl_set_ap_bw(struct net_device *dev, u32 bw, char *ifname)
+ 		WL_ERR(("bw_cap %x does not support bw = %d\n", cfg->bw_cap_5g, bw));
+ 		ret = BCME_BADARG;
+ 		goto exit;
+-	}
++	} */
+ 
+ 	WL_DBG(("Updating AP BW to %d\n", op2bw[bw]));
+ 
+@@ -7030,7 +7030,7 @@ wl_restore_ap_bw(struct bcm_cfg80211 *cfg)
+ 		return;
+ 	}
+ }
+-#endif /* SUPPORT_AP_BWCTRL */
++//#endif /* SUPPORT_AP_BWCTRL */
+ 
+ static s32
+ wl_roam_off_config(struct net_device *dev, bool val)

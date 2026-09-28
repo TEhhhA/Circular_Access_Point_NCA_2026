@@ -1,0 +1,21 @@
+name,desc,x,y
+S1,right of frigo (65.4cm) corner with wall,400,750
+S2,right of desk corner wall,1500,1100
+S3,left of door against the wall on plan de travail,1000,750
+S4,left of big window in corner,900,1650
+S5,corner table,1150,1100
+S6,corner desk side of door,1500,800
+S7,right of big window,350,1600
+S8,right of canapé,670,1150
+S9,window near door,1050,1900
+H1,against door opposite of portemanteau,950,200
+H2,on coart rack right of door,1250,200
+W1,left of door against wall,850,400
+W2,opposite of wall corner,250,600
+W3,corner shower wall wall,250,320
+B1,against window next to door,1400,1900
+B2,corner diagonal to door,2000,1200
+B3,corner of garde robe,2000,1850
+B4,gauche du lit pres du mur,1500,1200
+B5,gauche bout du lit,1500,1600
+T1,on toilet,1420,350
